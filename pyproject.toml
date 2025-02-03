@@ -1,0 +1,9 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audioscribe"
+version = "1.0.0"
+description = "Convert audio to text with AI-powered transcription"
+requires-python = ">=3.10,<3.11"
