@@ -4,6 +4,7 @@ import tempfile
 import os
 import subprocess
 from datetime import datetime
+from audio_recorder_streamlit import audio_recorder
 
 # Page configuration
 st.set_page_config(
@@ -136,105 +137,198 @@ st.markdown("""
         margin: 0.5rem 0;
         text-align: center;
     }
+    
+    /* Recording button */
+    .record-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem 1.5rem;
+        background-color: #ef4444;
+        color: white;
+        border-radius: 9999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin: 1rem 0;
+        border: none;
+    }
+    
+    .record-button:hover {
+        background-color: #dc2626;
+    }
+    
+    .record-button.recording {
+        animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        }
+    }
+    
+    /* Audio player */
+    .audio-player {
+        width: 100%;
+        margin: 1rem 0;
+        padding: 0.5rem;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# Header
-st.markdown("<h1 class='main-header'>AudioScribe</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle'>Convert your audio to text with AI-powered transcription</p>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>AudioScribe 🎙️</h1>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle'>Convert speech to text using OpenAI's Whisper</p>", unsafe_allow_html=True)
 
-# Initialize session state for transcription
-if 'transcription_result' not in st.session_state:
-    st.session_state.transcription_result = None
+# Initialize the Whisper model
+@st.cache_resource
+def load_model():
+    return whisper.load_model("base")
 
-# File upload with hidden label
-uploaded_file = st.file_uploader("Upload Audio File", type=["mp3", "wav", "m4a", "ogg"], label_visibility="collapsed")
+model = load_model()
 
-if uploaded_file is None:
+# Create tabs for different input methods
+tab1, tab2 = st.tabs(["Upload Audio", "Record Audio"])
+
+with tab1:
+    st.markdown("### Upload your audio file")
+    uploaded_file = st.file_uploader("Choose an audio file", type=['wav', 'mp3', 'm4a', 'ogg'])
+    
+    if uploaded_file is not None:
+        try:
+            # Check if ffmpeg is installed
+            try:
+                subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                st.error("FFmpeg is not installed. Please install FFmpeg to process audio files.")
+                st.stop()
+            
+            # Display audio player for preview
+            st.markdown("### Preview Audio")
+            st.audio(uploaded_file, format=f'audio/{uploaded_file.name.split(".")[-1]}')
+            
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
+
+            with st.spinner("Transcribing... This might take a moment."):
+                # Transcribe the audio
+                result = model.transcribe(tmp_file_path)
+                
+                # Display results
+                st.markdown("### Transcription Result")
+                st.write(result["text"])
+                
+                # Add download buttons for the transcription and audio
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="Download Transcription",
+                        data=result["text"],
+                        file_name=f"transcription_{timestamp}.txt",
+                        mime="text/plain"
+                    )
+                with col2:
+                    st.download_button(
+                        label="Download Audio",
+                        data=uploaded_file.getvalue(),
+                        file_name=uploaded_file.name,
+                        mime=f"audio/{uploaded_file.name.split('.')[-1]}"
+                    )
+            
+            # Clean up the temporary file
+            os.unlink(tmp_file_path)
+            
+        except Exception as e:
+            st.error(f"An error occurred while processing the audio: {str(e)}")
+            st.info("Please try uploading again. Make sure the file is a valid audio file.")
+
+with tab2:
+    st.markdown("### Record Audio")
     st.markdown("""
-        <div class='help-text'>
-        📎 Drag and drop your audio file here<br>
-        🎵 Supports MP3, WAV, M4A, and OGG formats<br>
-        ⚡ Fast, accurate AI transcription
+        <div style='text-align: center;'>
+            <p style='color: #475569; margin-bottom: 1rem;'>
+                Click the button below to start/stop recording your audio
+            </p>
         </div>
     """, unsafe_allow_html=True)
-
-if uploaded_file is not None:
-    try:
-        # Check if ffmpeg is installed
-        try:
-            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            st.error("""
-                ⚠️ FFmpeg is not installed. This is required for audio processing.
-                
-                If you're running locally, install FFmpeg:
-                - Ubuntu/Debian: `sudo apt-get install ffmpeg`
-                - MacOS: `brew install ffmpeg`
-                - Windows: Download from https://ffmpeg.org/download.html
-                
-                If you're using Streamlit Cloud, make sure you have a `packages.txt` file with `ffmpeg` listed.
-            """)
-            st.stop()
-
-        # Audio player
-        st.markdown("<div class='section-header'>Preview Audio</div>", unsafe_allow_html=True)
-        st.audio(uploaded_file)
-        
-        # Only transcribe if we don't have the result in session state
-        if st.session_state.transcription_result is None:
-            with st.spinner("🎯 Transcribing your audio..."):
-                # Create temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_file_path = tmp_file.name
-
-                try:
-                    # Load model and transcribe
-                    model = whisper.load_model("base")
-                    st.session_state.transcription_result = model.transcribe(tmp_file_path)
-                    
-                except Exception as e:
-                    st.error(f"""
-                        An error occurred during transcription: {str(e)}
-                        
-                        This might be due to:
-                        1. Invalid audio format
-                        2. Corrupted audio file
-                        3. Insufficient system resources
-                        
-                        Please try with a different audio file or contact support.
-                    """)
-                    st.session_state.transcription_result = None
-                finally:
-                    # Clean up temporary file
-                    if 'tmp_file_path' in locals():
-                        os.unlink(tmp_file_path)
-        
-        # If we have a transcription result, show it
-        if st.session_state.transcription_result is not None:
-            # Success message and transcription
-            st.markdown("<div class='success-box'>✨ Transcription completed!</div>", unsafe_allow_html=True)
-            st.text_area("Transcription Result", value=st.session_state.transcription_result["text"], height=150, label_visibility="collapsed")
-            
-            # Download button
-            st.download_button(
-                label="💾 Download Transcription",
-                data=st.session_state.transcription_result["text"],
-                file_name=f"transcription_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
-            )
     
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-else:
-    # Reset transcription result when no file is uploaded
-    st.session_state.transcription_result = None
+    # Center the recording interface
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        # Audio recorder with custom styling
+        audio_bytes = audio_recorder(
+            pause_threshold=60.0,  # Increased pause threshold to avoid early stopping
+            recording_color="#ef4444",
+            neutral_color="#475569",
+            icon_name="microphone",
+            icon_size="2x"
+        )
+    
+    if audio_bytes:
+        try:
+            # Create a temporary file for the recorded audio
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                tmp_file.write(audio_bytes)
+                tmp_file_path = tmp_file.name
+            
+            # Display audio player
+            st.markdown("### Preview Recording")
+            st.audio(audio_bytes, format="audio/wav")
+            
+            with st.spinner("Transcribing... This might take a moment."):
+                # Transcribe the recorded audio
+                result = model.transcribe(tmp_file_path)
+                
+                # Display results
+                st.markdown("### Transcription Result")
+                st.write(result["text"])
+                
+                # Add download button for the transcription
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="Download Transcription",
+                        data=result["text"],
+                        file_name=f"transcription_{timestamp}.txt",
+                        mime="text/plain"
+                    )
+                with col2:
+                    # Add button to download the audio
+                    st.download_button(
+                        label="Download Recording",
+                        data=audio_bytes,
+                        file_name=f"recording_{timestamp}.wav",
+                        mime="audio/wav"
+                    )
+            
+            # Clean up the temporary file
+            os.unlink(tmp_file_path)
+            
+        except Exception as e:
+            st.error(f"An error occurred while processing the audio: {str(e)}")
+            st.info("Please try recording again. Make sure to speak clearly and avoid background noise.")
 
-# Footer
-st.markdown("""
-    ---
-    <div style='text-align: center; color: #666;'>
-        Made with ❤️ using Streamlit and Whisper AI
+# Add footer
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: #64748b; padding: 1rem;'>
+        Made with ❤️ using OpenAI's Whisper
     </div>
-    """, unsafe_allow_html=True)
+    """, 
+    unsafe_allow_html=True
+)
