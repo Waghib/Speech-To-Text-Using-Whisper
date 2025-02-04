@@ -229,26 +229,17 @@ with tab1:
                 st.markdown("### Transcription Result")
                 st.write(result["text"])
                 
-                # Add download buttons for the transcription and audio
+                # Add download button for the transcription
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.download_button(
-                        label="Download Transcription",
-                        data=result["text"],
-                        file_name=f"transcription_{timestamp}.txt",
-                        mime="text/plain"
-                    )
-                with col2:
-                    st.download_button(
-                        label="Download Audio",
-                        data=uploaded_file.getvalue(),
-                        file_name=uploaded_file.name,
-                        mime=f"audio/{uploaded_file.name.split('.')[-1]}"
-                    )
-            
-            # Clean up the temporary file
-            os.unlink(tmp_file_path)
+                st.download_button(
+                    label="Download Transcription",
+                    data=result["text"],
+                    file_name=f"transcription_{timestamp}.txt",
+                    mime="text/plain"
+                )
+                
+                # Clean up the temporary file
+                os.unlink(tmp_file_path)
             
         except Exception as e:
             st.error(f"An error occurred while processing the audio: {str(e)}")
@@ -298,25 +289,15 @@ with tab2:
                 
                 # Add download button for the transcription
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.download_button(
-                        label="Download Transcription",
-                        data=result["text"],
-                        file_name=f"transcription_{timestamp}.txt",
-                        mime="text/plain"
-                    )
-                with col2:
-                    # Add button to download the audio
-                    st.download_button(
-                        label="Download Recording",
-                        data=audio_bytes,
-                        file_name=f"recording_{timestamp}.wav",
-                        mime="audio/wav"
-                    )
-            
-            # Clean up the temporary file
-            os.unlink(tmp_file_path)
+                st.download_button(
+                    label="Download Transcription",
+                    data=result["text"],
+                    file_name=f"transcription_{timestamp}.txt",
+                    mime="text/plain"
+                )
+                
+                # Clean up the temporary file
+                os.unlink(tmp_file_path)
             
         except Exception as e:
             st.error(f"An error occurred while processing the audio: {str(e)}")
